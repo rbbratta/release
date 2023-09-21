@@ -420,7 +420,7 @@ if [ "${MTU_OFFSET}" -ne 0 ]; then
   log "Starting MTU migration from cluster network MTU ${from} and host MTU ${host_mtu} to cluster network MTU ${to} and host MTU ${host_to}"
   oc patch Network.operator.openshift.io cluster --type='merge' --patch "{\"spec\": { \"migration\": { \"mtu\": { \"network\": { \"from\": ${from}, \"to\": ${to} } , \"machine\": { \"to\" : ${host_to}} } } } }"
 else
-  # Check what type of network we are dealing with to use the the correct
+  # Check what type of network we are dealing with to use the correct
   # configuration
   network_type=$(oc get network.config --output=jsonpath='{.items..status.networkType}')
   if [ -z "${network_type}" ]; then
