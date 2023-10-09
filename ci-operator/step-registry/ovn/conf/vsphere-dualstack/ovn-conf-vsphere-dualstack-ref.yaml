@@ -12,5 +12,6 @@ ref:
   env:
     - name: IP_FAMILIES
       default: ""
+      documentation: default DualStackIPv6Primary
   documentation: |-
     The ovn dualstack conf step adds the configuration for dualstack to set of manifests for installation
