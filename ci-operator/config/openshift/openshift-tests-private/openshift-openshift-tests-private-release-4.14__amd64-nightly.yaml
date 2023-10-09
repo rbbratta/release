@@ -3522,7 +3522,7 @@ tests:
     - chain: openshift-e2e-test-qe-destructive
     workflow: cucushift-installer-rehearse-vsphere-ipi-ovn-dualstack
 - as: vsphere-ipi-ovn-dualstack-f28-ui
-  cron: 42 7 2 * *
+  cron: 32 9 29 * *
   steps:
     cluster_profile: vsphere
     env:
@@ -3530,6 +3530,28 @@ tests:
       TAG_VERSION: '@4.14'
     test:
     - chain: openshift-e2e-test-qe-ui
+    workflow: cucushift-installer-rehearse-vsphere-ipi-ovn-dualstack
+- as: vsphere-ipi-ovn-dualstack-privmaryv6-f28
+  cron: 28 20 15 * *
+  steps:
+    cluster_profile: vsphere
+    env:
+      E2E_RUN_TAGS: '@vsphere-ipi and @network-ovnkubernetes and not @fips'
+      IP_FAMILIES: DualStackIPv6Primary
+      TAG_VERSION: '@4.14'
+    test:
+    - chain: openshift-e2e-test-qe
+    workflow: cucushift-installer-rehearse-vsphere-ipi-ovn-dualstack
+- as: vsphere-ipi-ovn-dualstack-privmaryv6-f28-destructive
+  cron: 22 23 17 * *
+  steps:
+    cluster_profile: vsphere
+    env:
+      E2E_RUN_TAGS: '@vsphere-ipi and @network-ovnkubernetes and not @fips'
+      IP_FAMILIES: DualStackIPv6Primary
+      TAG_VERSION: '@4.14'
+    test:
+    - chain: openshift-e2e-test-qe-destructive
     workflow: cucushift-installer-rehearse-vsphere-ipi-ovn-dualstack
 - as: vsphere-ipi-ovn-ipsec-f28
   cron: 36 4 19 * *
