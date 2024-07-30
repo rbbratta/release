@@ -13,9 +13,9 @@ fi
 co_timeout=${OVN_SDN_MIGRATION_TIMEOUT:-1200s}
 timeout "$co_timeout" bash <<EOT
 until
-  oc wait co --all --for='condition=AVAILABLE=True' --timeout=10s && \
-  oc wait co --all --for='condition=PROGRESSING=False' --timeout=10s && \
-  oc wait co --all --for='condition=DEGRADED=False' --timeout=10s;
+  oc wait co --all --for='condition=AVAILABLE=True' --timeout=20s && \
+  oc wait co --all --for='condition=PROGRESSING=False' --timeout=20s && \
+  oc wait co --all --for='condition=DEGRADED=False' --timeout=20s;
 do
   sleep 10
   echo "Some ClusterOperators Degraded=False,Progressing=True,or Available=False";
@@ -43,9 +43,9 @@ oc wait mcp --all --for='condition=UPDATING=True' --timeout="$mco_timeout"
 mcp_timeout=${OVN_SDN_MIGRATION_TIMEOUT:-2700s}
 timeout "$mcp_timeout" bash <<EOT
 until
-  oc wait mcp --all --for='condition=UPDATED=True' --timeout=10s && \
-  oc wait mcp --all --for='condition=UPDATING=False' --timeout=10s && \
-  oc wait mcp --all --for='condition=DEGRADED=False' --timeout=10s;
+  oc wait mcp --all --for='condition=UPDATED=True' --timeout=20s && \
+  oc wait mcp --all --for='condition=UPDATING=False' --timeout=20s && \
+  oc wait mcp --all --for='condition=DEGRADED=False' --timeout=20s;
 do
   sleep 10
   echo "Some MachineConfigPool DEGRADED=True,UPDATING=True,or UPDATED=False";
@@ -92,7 +92,7 @@ sleep ${delay}m
 ovn_node_timeout=${OVN_SDN_MIGRATION_TIMEOUT:-1800s}
 timeout "$ovn_node_timeout" bash <<EOT
 until
-  oc wait node --all --for condition=ready --timeout=10s;
+  oc wait node --all --for condition=ready --timeout=20s;
 do
   sleep 10
   echo "nodes not ready"
@@ -107,9 +107,9 @@ all_co_timeout=${OVN_SDN_MIGRATION_TIMEOUT:-2700s}
 timeout "$all_co_timeout" bash <<EOT
 success_count=0
 until [ \$success_count -eq 3 ]; do
-  if oc wait co --all --for='condition=Available=True' --timeout=10s &&
-     oc wait co --all --for='condition=Progressing=False' --timeout=10s &&
-     oc wait co --all --for='condition=Degraded=False' --timeout=10s; then
+  if oc wait co --all --for='condition=Available=True' --timeout=20s &&
+     oc wait co --all --for='condition=Progressing=False' --timeout=20s &&
+     oc wait co --all --for='condition=Degraded=False' --timeout=20s; then
     echo "Check succeeded (\$success_count/3)"
     ((success_count++))
     if [ \$success_count -lt 3 ]; then
