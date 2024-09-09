@@ -223,9 +223,18 @@ for ((i = 0; i < total_host; i++)); do
       macAddress: ${mac_addresses[$i]}
    networkConfig:
     interfaces:
-      - name: ens32
-        type: ethernet
+      - name: bond0
+        type: bond
         state: up
+        ethtool:
+          feature:
+            esp-tx-csum-hw-offload: off
+        link-aggregation:
+          mode: active-backup
+          options:
+            miimon: "100"
+          port:
+            - name: ens32
         mac-address: ${mac_addresses[$i]}${ipv4}${ipv6}
     dns-resolver:
      config:
