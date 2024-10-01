@@ -79,17 +79,27 @@ govc vm.power -on ${vm_folder}/${bastion_name}
 
 loop=10
 while [ ${loop} -gt 0 ]; do
+  # jq -r '.VirtualMachines[0].Guest.Net[] | .IpConfig.IpAddress // [] | select(length > 0) | .[] | select(.IpAddress|test("^fd65")) | .IpAddress + "/" + (.PrefixLength | tostring) '
+  # fd65:10:128:3::2/64
+  # fd65:a1a8:60ad:271c::1a/128
+  # fd65:a1a8:60ad:271c:db6:8144:d9d6:5c4c/64
   bastion_ip=$(govc vm.info -json ${vm_folder}/${bastion_name} | jq -r .VirtualMachines[].Summary.Guest.IpAddress)
-  if [ "x${bastion_ip}" == "x" ]; then
+  bastion_ipv6=$(govc vm.info -json ${vm_folder}/${bastion_name} | jq -r '.VirtualMachines[0].Guest.Net[] | .IpConfig.IpAddress // [] | select(length > 0) | .[] | select(.IpAddress|test("^fd65")) | .IpAddress' )
+  # we require ipv4 and ipv6
+  if [[ ${bastion_ip} && ${bastion_ipv6} ]]; then
+    break
+  else
     loop=$((loop - 1))
     sleep 30
-  else
-    break
   fi
 done
 
-if [ "x${bastion_ip}" == "x" ]; then
+if [[ -z ${bastion_ip} ]]; then
   echo "Unable to get ip of bastion host instance ${bastion_name}!"
+  exit 1
+fi
+if [[ -z ${bastion_ip_v6} ]]; then
+  echo "Unable to get ipv6 of bastion host instance ${bastion_name}!"
   exit 1
 fi
 
@@ -116,21 +126,44 @@ if [[ "${REGISTER_MIRROR_REGISTRY_DNS}" == "yes" ]]; then
     --output text)"
   echo "${bastion_hosted_zone_id}" >"${SHARED_DIR}/bastion-hosted-zone.txt"
 
-  dns_create_str=""
-  dns_delete_str=""
-  dns_target='"TTL": 60,"ResourceRecords": [{"Value": "'${bastion_ip}'"}]'
-  upsert_str="{\"Action\": \"UPSERT\",\"ResourceRecordSet\": {\"Name\": \"${bastion_host_dns}.\",\"Type\": \"A\",$dns_target}}"
-  delete_str="{\"Action\": \"DELETE\",\"ResourceRecordSet\": {\"Name\": \"${bastion_host_dns}.\",\"Type\": \"A\",$dns_target}}"
-  dns_create_str="${upsert_str},${dns_create_str}"
-  dns_delete_str="${delete_str},${dns_delete_str}"
+  # use jq to quote the json
+  dns_target=$(jq -n --arg ip "${bastion_ip}" '{TTL: 60, ResourceRecords: [{Value: $ip}]}')
+  dns_target_v6=$(jq -n --arg ip "${bastion_ipv6}" '{TTL: 60, ResourceRecords: [{Value: $ip}]}')
 
-  cat >"${SHARED_DIR}"/bastion-host-dns-create.json <<EOF
-{"Comment": "Create public OpenShift DNS records for bastion host on vSphere","Changes": [${dns_create_str::-1}]}
-EOF
+  upsert_json=$(jq -n \
+    --arg name "${bastion_host_dns}." \
+    --arg type "A" \
+    --argjson target "${dns_target}" \
+    '{Action: "UPSERT", ResourceRecordSet: {Name: $name, Type: $type}} + $target')
 
-  cat >"${SHARED_DIR}"/bastion-host-dns-delete.json <<EOF
-{"Comment": "Delete public OpenShift DNS records for bastion host on vSphere","Changes": [${dns_delete_str::-1}]}
-EOF
+  delete_json=$(jq -n \
+    --arg name "${bastion_host_dns}." \
+    --arg type "A" \
+    --argjson target "${dns_target}" \
+    '{Action: "DELETE", ResourceRecordSet: {Name: $name, Type: $type}} + $target')
+
+  upsert_json_v6=$(jq -n \
+    --arg name "${bastion_host_dns}." \
+    --arg type "AAAA" \
+    --argjson target "${dns_target_v6}" \
+    '{Action: "UPSERT", ResourceRecordSet: {Name: $name, Type: $type}} + $target')
+
+  delete_json_v6=$(jq -n \
+    --arg name "${bastion_host_dns}." \
+    --arg type "AAAA" \
+    --argjson target "${dns_target_v6}" \
+    '{Action: "DELETE", ResourceRecordSet: {Name: $name, Type: $type}} + $target')
+
+  # Create JSON files
+  jq -n \
+    --arg comment "Create public OpenShift DNS records for bastion host on vSphere" \
+    --argjson changes "[${upsert_json}, ${upsert_json_v6}]" \
+    '{Comment: $comment, Changes: $changes}' > "${SHARED_DIR}/bastion-host-dns-create.json"
+
+  jq -n \
+    --arg comment "Delete public OpenShift DNS records for bastion host on vSphere" \
+    --argjson changes "[${delete_json}, ${delete_json_v6}]" \
+    '{Comment: $comment, Changes: $changes}' > "${SHARED_DIR}/bastion-host-dns-delete.json"
 
   id=$(aws route53 change-resource-record-sets --hosted-zone-id "$bastion_hosted_zone_id" --change-batch file:///"${SHARED_DIR}"/bastion-host-dns-create.json --query '"ChangeInfo"."Id"' --output text)
   echo "Waiting for DNS records to sync..."
@@ -142,17 +175,22 @@ EOF
 fi
 
 echo "bastion ip address: ${bastion_ip}"
+echo "bastion ipv6 address: ${bastion_ipv6}"
 
 #Save bastion information
 echo "${bastion_ip}" >"${SHARED_DIR}/bastion_private_address"
+echo "${bastion_ipv6}" >"${SHARED_DIR}/bastion_private_ipv6_address"
 echo "core" >"${SHARED_DIR}/bastion_ssh_user"
 
 proxy_credential=$(cat /var/run/vault/proxy/proxy_creds)
 proxy_private_url="http://${proxy_credential}@${bastion_ip}:3128"
 echo "${proxy_private_url}" >"${SHARED_DIR}/proxy_private_url"
+proxy_private_url_v6="http://${proxy_credential}@[${bastion_ipv6}]:3128"
+echo "${proxy_private_url_v6}" >"${SHARED_DIR}/proxy_private_url_v6"
 
 # echo proxy IP to ${SHARED_DIR}/proxyip
 echo "${bastion_ip}" >"${SHARED_DIR}/proxyip"
+echo "${bastion_ipv6}" >"${SHARED_DIR}/proxyipv6"
 
 echo "Sleeping 5 mins, make sure that the bastion host is fully started."
 sleep 300
