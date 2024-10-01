@@ -19,6 +19,7 @@ fi
 
 SSH_PRIV_KEY_PATH=${CLUSTER_PROFILE_DIR}/ssh-privatekey
 BASTION_IP=$(<"${SHARED_DIR}/bastion_private_address")
+BASTION_IPV6=$(<"${SHARED_DIR}/bastion_private_address_ipv6")
 BASTION_SSH_USER=$(<"${SHARED_DIR}/bastion_ssh_user")
 
 haproxy_cfg_filename="haproxy.cfg"
@@ -44,18 +45,22 @@ defaults
 
 frontend api-server
     bind ${BASTION_IP}:6443
+    bind ${BASTION_IPV6}:6443
     default_backend api-server
 
 frontend machine-config-server
     bind ${BASTION_IP}:22623
+    bind ${BASTION_IPV6}:22623
     default_backend machine-config-server
 
 frontend router-http
     bind ${BASTION_IP}:80
+    bind ${BASTION_IPV6}:80
     default_backend router-http
 
 frontend router-https
     bind ${BASTION_IP}:443
+    bind ${BASTION_IPV6}:443
     default_backend router-https
 
 backend api-server
@@ -117,6 +122,11 @@ api_dns_target='"TTL": 60,
 apps_dns_target='"TTL": 60,
       "ResourceRecords": [{"Value": "'${BASTION_IP}'"}]'
 
+api_v6_dns_target='"TTL": 60,
+      "ResourceRecords": [{"Value": "'${BASTION_IPV6}'"}]'
+apps_v6_dns_target='"TTL": 60,
+      "ResourceRecords": [{"Value": "'${BASTION_IPV6}'"}]'
+
 # Update DNS to use external lb ip
 echo "Updating DNS records..."
 cat > "${SHARED_DIR}"/dns-update.json <<EOF
@@ -135,6 +145,20 @@ cat > "${SHARED_DIR}"/dns-update.json <<EOF
       "Name": "*.apps.$cluster_domain.",
       "Type": "A",
       $apps_dns_target
+      }
+    },{
+    "Action": "UPSERT",
+    "ResourceRecordSet": {
+      "Name": "api.$cluster_domain.",
+      "Type": "AAAA",
+      $api_v6_dns_target
+      }
+    },{
+    "Action": "UPSERT",
+    "ResourceRecordSet": {
+      "Name": "*.apps.$cluster_domain.",
+      "Type": "AAAA",
+      $apps_v6_dns_target
       }
 }]}
 EOF
@@ -169,6 +193,21 @@ cat > "${SHARED_DIR}"/dns-delete.json <<EOF
       "Type": "A",
       $apps_dns_target
       }
+    },{
+    "Action": "DELETE",
+    "ResourceRecordSet": {
+      "Name": "api.$cluster_domain.",
+      "Type": "AAAA",
+      "TTL": 60,
+      "ResourceRecords": [{"Value": "${vips[1]}"}]
+      }
+    },{
+    "Action": "DELETE",
+    "ResourceRecordSet": {
+      "Name": "*.apps.$cluster_domain.",
+      "Type": "AAAA",
+      $apps_dns_target
+      }
 }]}
 EOF
 
@@ -176,5 +215,6 @@ id=$(aws route53 change-resource-record-sets --hosted-zone-id "$hosted_zone_id" 
 echo "Waiting for DNS records to sync..."
 aws route53 wait resource-record-sets-changed --id "$id"
 echo "DNS records updated."
-curl https://${BASTION_IP}:6443/version --insecure
-curl http://console-openshift-console.apps.${cluster_name}.${base_domain} -I -L --insecure
+curl "https://${BASTION_IP}:6443/version" --insecure
+curl "https://[${BASTION_IPV6}]:6443/version" --insecure
+curl "http://console-openshift-console.apps.${cluster_name}.${base_domain}" -I -L --insecure
